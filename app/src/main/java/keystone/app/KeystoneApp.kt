@@ -26,6 +26,7 @@ class KeystoneApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Shield.init(this)
+        keystone.app.shield.ShieldFirewall.init(this)
         val engine = Engine(SqliteStore(this))
         engine.installPresets(seed = true)
         engine.onChange = { Ks.version.longValue = engine.version }

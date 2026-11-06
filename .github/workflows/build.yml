@@ -17,6 +17,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Engine tests
         run: ./gradlew :engine:test
+      - name: Shield core (Rust) tests
+        working-directory: shield-core
+        run: cargo test --locked || cargo test
+      - name: Build Shield core for Android
+        working-directory: shield-core
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          cargo install cargo-ndk --locked
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 26 -o ../app/src/main/jniLibs build --release
+          ls -la ../app/src/main/jniLibs/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shield-jnilibs
+          path: app/src/main/jniLibs
       - name: Restore release keystore (optional)
         if: env.KEYSTORE_BASE64 != ''
         run: |

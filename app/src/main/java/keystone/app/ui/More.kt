@@ -31,6 +31,9 @@ import keystone.app.Ks
 import keystone.app.Reminders
 import keystone.app.UpdateChecker
 import keystone.app.UpdateInstaller
+import keystone.app.shield.ShieldCore
+import keystone.app.shield.ShieldFirewall
+import keystone.app.shield.ShieldVpnService
 import keystone.app.Shield
 import keystone.app.MainActivity
 import androidx.fragment.app.FragmentActivity
@@ -63,6 +66,17 @@ fun SettingsScreen() {
     var pinDialog by remember { mutableStateOf(false) }
     var confirmWipeToggle by remember { mutableStateOf(false) }
     val act = ctx as? FragmentActivity
+    val fwRunning by ShieldFirewall.running
+    var fwTrackers by remember { mutableStateOf(ShieldFirewall.blockTrackers) }
+    var appsDialog by remember { mutableStateOf(false) }
+    var domainDialog by remember { mutableStateOf(false) }
+    var fwBlockedApps by remember { mutableStateOf(ShieldFirewall.blockedApps) }
+    var fwDomains by remember { mutableStateOf(ShieldFirewall.customDomains) }
+    val vpnConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        if (res.resultCode == android.app.Activity.RESULT_OK) ShieldVpnService.start(ctx)
+        else Toast.makeText(ctx, "The firewall needs VPN permission to run", Toast.LENGTH_LONG).show()
+    }
+    fun restartFirewall() { if (ShieldFirewall.running.value) { ShieldVpnService.stop(ctx); scope.launch { kotlinx.coroutines.delay(400); ShieldVpnService.start(ctx) } } }
     fun openUrl(url: String) = runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         .onFailure { Toast.makeText(ctx, "No browser found", Toast.LENGTH_SHORT).show() }
     fun downloadAndInstall(rel: UpdateChecker.Release) {
@@ -188,6 +202,28 @@ fun SettingsScreen() {
                 }
             }
             item {
+                SectionCard("Firewall (test)", Icons.Outlined.Security) {
+                    Text("Blocks trackers and apps you choose by filtering their internet lookups on your phone. Runs as a local VPN; nothing is sent to us.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ListItem(headlineContent = { Text("Firewall") },
+                        supportingContent = { Text(when { !ShieldCore.available -> "Not included in this build"; fwRunning -> "On · ${ShieldFirewall.blockedCount.intValue} blocked, ${ShieldFirewall.allowedCount.intValue} allowed"; else -> "Off" }) },
+                        trailingContent = { Switch(fwRunning, enabled = ShieldCore.available, onCheckedChange = { on ->
+                            if (on) { val i = android.net.VpnService.prepare(ctx); if (i != null) vpnConsent.launch(i) else ShieldVpnService.start(ctx) }
+                            else ShieldVpnService.stop(ctx)
+                        }) })
+                    ShieldFirewall.lastError.value?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    ListItem(headlineContent = { Text("Block ads and trackers") },
+                        trailingContent = { Switch(fwTrackers, { fwTrackers = it; ShieldFirewall.blockTrackers = it; restartFirewall() }) })
+                    TextButton(onClick = { appsDialog = true }) { Text("Blocked apps (${fwBlockedApps.size})") }
+                    TextButton(onClick = { domainDialog = true }) { Text("Blocked websites (${fwDomains.size})") }
+                    TextButton(onClick = { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS)) } }) { Text("Always-on VPN settings") }
+                    if (ShieldFirewall.recentBlocks.isNotEmpty()) {
+                        Text("Recently blocked", style = MaterialTheme.typography.labelLarge)
+                        ShieldFirewall.recentBlocks.take(8).forEach { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 1) }
+                    }
+                    Text("Test build: blocks lookups, not every connection. Apps with their own secure DNS, or Private DNS set to a hostname, can get around it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
                 SectionCard("Updates", Icons.Outlined.SystemUpdate) {
                     Text("You're on v${BuildConfig.VERSION_NAME}. Checking contacts GitHub once and sends nothing about you.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -252,6 +288,13 @@ fun SettingsScreen() {
         Ks.eraseAll()
         nav.navigate("onboarding") { popUpTo(nav.graph.id) { inclusive = true } }
     }
+    if (appsDialog) BlockedAppsDialog(fwBlockedApps, onDismiss = { appsDialog = false }) { sel ->
+        ShieldFirewall.blockedApps = sel; fwBlockedApps = sel; appsDialog = false; restartFirewall() }
+    if (domainDialog) TextInputDialog("Block a website", label = "Domain, e.g. example.com", onDismiss = { domainDialog = false }) { d ->
+        val host = d.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/')
+        if (Regex("^[a-z0-9.-]+\\.[a-z]{2,}$").matches(host)) { fwDomains = (fwDomains + host).distinct(); ShieldFirewall.customDomains = fwDomains; restartFirewall() }
+        else Toast.makeText(ctx, "That doesn't look like a website address", Toast.LENGTH_SHORT).show()
+        domainDialog = false }
     if (pinDialog) PinSetupDialog(onDismiss = { pinDialog = false }) { pin -> Shield.setPin(pin); lockOn = true; pinDialog = false
         Toast.makeText(ctx, "App lock is on", Toast.LENGTH_SHORT).show() }
     if (confirmWipeToggle) ConfirmDialog("Erase after ${Shield.MAX_ATTEMPTS} wrong PINs?", "After ${Shield.MAX_ATTEMPTS} wrong PINs in a row, every collection, item and setting on this device is deleted. This can't be undone, so export a backup regularly.", "Turn on",
@@ -520,5 +563,31 @@ private fun PinSetupDialog(onDismiss: () -> Unit, onDone: (String) -> Unit) {
             }
         },
         confirmButton = { TextButton(enabled = valid, onClick = { onDone(a) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
+
+@Composable
+private fun BlockedAppsDialog(initial: Set<String>, onDismiss: () -> Unit, onDone: (Set<String>) -> Unit) {
+    val ctx = LocalContext.current
+    val pm = ctx.packageManager
+    val apps = remember {
+        pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
+            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .filter { it.first != ctx.packageName }.distinctBy { it.first }.sortedBy { it.second.lowercase() }
+    }
+    var sel by remember { mutableStateOf(initial) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Block apps from the internet") },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                items(apps.size) { i ->
+                    val (pkg, label) = apps[i]
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(pkg in sel, { sel = if (it) sel + pkg else sel - pkg })
+                        Text(label, maxLines = 1)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onDone(sel) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }

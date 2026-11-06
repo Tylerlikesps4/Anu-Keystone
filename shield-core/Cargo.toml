@@ -1,0 +1,19 @@
+[package]
+name = "shield"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Anu Keystone Shield firewall core: packet and DNS filtering, no I/O"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

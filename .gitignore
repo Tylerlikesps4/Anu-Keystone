@@ -12,3 +12,6 @@ dist/*.apk
 tools-setup.sh
 docs/
 build.sh
+
+# Built by CI from shield-core/
+app/src/main/jniLibs/
