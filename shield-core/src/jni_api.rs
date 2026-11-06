@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! JNI bridge for keystone.app.shield.ShieldCore. Byte arrays in, byte arrays out.
 #![allow(non_snake_case)]
+// JNI exports need #[no_mangle]; the only other unsafe is the Rules handle in `unsafe_free`.
+#![allow(unsafe_code)]
 use crate::{decide, wrap_reply, Flow, Rules, Verdict};
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jint, jlong};
