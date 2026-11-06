@@ -9,3 +9,5 @@ keys/
 logs/
 dist/*.apk
 .idea/
+tools-setup.sh
+docs/

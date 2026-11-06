@@ -1,13 +1,13 @@
-# Anu Keystone v0.01
+# Anu Keystone v0.02
 
 **Your whole life in one private, offline app. Tasks, habits, money, goals & more.**
 
 [![Build](https://github.com/Tylerlikesps4/Anu-Keystone/actions/workflows/build.yml/badge.svg)](https://github.com/Tylerlikesps4/Anu-Keystone/actions/workflows/build.yml)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
-![Version](https://img.shields.io/badge/version-0.01-orange)
+![Version](https://img.shields.io/badge/version-0.02-orange)
 
-Anu Keystone is a free, open-source second brain for your whole life. It runs entirely on your phone, with no account, no internet and no tracking.
+Anu Keystone is a free, open-source second brain for your whole life. It runs entirely on your phone, with no account and no tracking, and it only goes online when you tap Check for updates.
 
 Start with the Life Setup wizard: rate your Wheel of Life, pick your core values, write your vision and set your goals. Then Anu Keystone builds your dashboard around you.
 
@@ -79,13 +79,13 @@ Start with the Life Setup wizard: rate your Wheel of Life, pick your core values
 
 ## Download & install
 
-1. Go to **[Releases](https://github.com/Tylerlikesps4/Anu-Keystone/releases/latest)** and download `AnuKeystone-v0.01.apk` on your Android phone.
+1. Go to **[Releases](https://github.com/Tylerlikesps4/Anu-Keystone/releases/latest)** and download the latest `AnuKeystone-vX.XX.apk` on your Android phone.
 2. Open the file. If Android asks, allow your browser or file manager to **install unknown apps**.
 3. Tap **Install**, then open **Anu Keystone**.
 
 **Requirements:** Android 8.0 (Oreo, API 26) or newer. About 2 MB.
 
-**Updating:** install the new APK over the old one. Your data is kept, because every release is signed with the same key.
+**Updating:** tap **More → Updates → Check for updates**, or grab the newest APK from Releases, and install it over the old one. Your data is kept, because every release is signed with the same key.
 
 ---
 
@@ -102,7 +102,7 @@ Start with the Life Setup wizard: rate your Wheel of Life, pick your core values
 ## Privacy
 
 - No account, no sign-in, no ads, no analytics.
-- The app does not request internet access. Nothing leaves your phone unless you export it yourself.
+- The only network request is **Check for updates** (More → Updates): one HTTPS call to GitHub, sent only when you tap it, carrying nothing about you. Nothing else leaves your phone unless you export it yourself.
 - Your data lives in a local SQLite database inside the app's private storage.
 - Uninstalling the app deletes your data, so export a backup first.
 
@@ -182,6 +182,9 @@ app/      Android app (Jetpack Compose, Material 3): SQLite store, screens, widg
 
 ## Roadmap
 
+- [x] Check for updates (v0.02)
+- [ ] Keystone Shield security layer
+
 - [ ] Drag and drop on boards (currently long-press to move)
 - [ ] More formula functions
 - [ ] Currencies other than USD
@@ -195,7 +198,7 @@ Ideas welcome in [Issues](https://github.com/Tylerlikesps4/Anu-Keystone/issues).
 
 ## Known limitations
 
-v0.01 is an early build:
+v0.02 is an early build:
 
 - Boards use long-press to move cards, not drag.
 - The formula language is small.

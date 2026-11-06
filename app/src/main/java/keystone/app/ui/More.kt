@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.dp
 import keystone.app.BuildConfig
 import keystone.app.Ks
 import keystone.app.Reminders
+import keystone.app.UpdateChecker
+import kotlinx.coroutines.launch
+import android.net.Uri
 import keystone.engine.*
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.LocalDate
@@ -42,6 +45,12 @@ fun SettingsScreen() {
     var pendingImport by remember { mutableStateOf<String?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var foundUpdate by remember { mutableStateOf<UpdateChecker.Release?>(null) }
+    fun openUrl(url: String) = runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        .onFailure { Toast.makeText(ctx, "No browser found", Toast.LENGTH_SHORT).show() }
 
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) runCatching {
@@ -124,6 +133,27 @@ fun SettingsScreen() {
                 }
             }
             item {
+                SectionCard("Updates", Icons.Outlined.SystemUpdate) {
+                    Text("You're on v${BuildConfig.VERSION_NAME}. Checking contacts GitHub once and sends nothing about you.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(enabled = !checking, onClick = {
+                            checking = true; updateStatus = null
+                            scope.launch {
+                                when (val r = UpdateChecker.check()) {
+                                    is UpdateChecker.Result.Available -> { foundUpdate = r.release; updateStatus = "v${r.release.version} is available" }
+                                    is UpdateChecker.Result.UpToDate -> updateStatus = "You're up to date"
+                                    is UpdateChecker.Result.Failed -> updateStatus = r.reason
+                                }
+                                checking = false
+                            }
+                        }) { Text(if (checking) "Checking…" else "Check for updates") }
+                        if (checking) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                    updateStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    TextButton(onClick = { openUrl(UpdateChecker.RELEASES_PAGE) }) { Text("All releases") }
+                }
+            }
+            item {
                 SectionCard("About", Icons.Outlined.Info) {
                     Text("Anu Keystone v${BuildConfig.VERSION_NAME} · free & open source (GPL-3.0-or-later)", style = MaterialTheme.typography.bodyMedium)
                     TextButton(onClick = { nav.navigate("about") }) { Text("Licenses & credits") }
@@ -131,6 +161,21 @@ fun SettingsScreen() {
                 }
             }
         }
+    }
+    foundUpdate?.let { rel ->
+        AlertDialog(onDismissRequest = { foundUpdate = null },
+            title = { Text("Update available: v${rel.version}") },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    Text(rel.title, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text(rel.notes.ifBlank { "No release notes." }, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Install the new APK over this one. Your data stays. Export a backup first to be safe.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(onClick = { openUrl(rel.apkUrl ?: rel.pageUrl); foundUpdate = null }) { Text(if (rel.apkUrl != null) "Download" else "Open release") } },
+            dismissButton = { TextButton(onClick = { foundUpdate = null }) { Text("Later") } })
     }
     pendingImport?.let { json ->
         AlertDialog(onDismissRequest = { pendingImport = null }, title = { Text("Import backup") },
