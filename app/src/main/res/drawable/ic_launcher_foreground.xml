@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keystone mark: an arch with a highlighted keystone. Original artwork, GPL-3.0-or-later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFE9EEF7" android:pathData="M30,78 L30,56 A24,24 0 0,1 46,33.4 L49,45 A12,12 0 0,0 42,56 L42,78 Z"/>
+    <path android:fillColor="#FFE9EEF7" android:pathData="M78,78 L78,56 A24,24 0 0,0 62,33.4 L59,45 A12,12 0 0,1 66,56 L66,78 Z"/>
+    <path android:fillColor="#FFFCA311" android:pathData="M46.5,31.5 L61.5,31.5 L58.5,44 L49.5,44 Z"/>
+</vector>
