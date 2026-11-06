@@ -11,3 +11,4 @@ dist/*.apk
 .idea/
 tools-setup.sh
 docs/
+build.sh

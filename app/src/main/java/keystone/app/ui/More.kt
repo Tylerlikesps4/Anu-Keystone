@@ -30,6 +30,10 @@ import keystone.app.BuildConfig
 import keystone.app.Ks
 import keystone.app.Reminders
 import keystone.app.UpdateChecker
+import keystone.app.UpdateInstaller
+import keystone.app.Shield
+import keystone.app.MainActivity
+import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
 import android.net.Uri
 import keystone.engine.*
@@ -49,8 +53,34 @@ fun SettingsScreen() {
     var checking by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
     var foundUpdate by remember { mutableStateOf<UpdateChecker.Release?>(null) }
+    var testBuilds by remember { mutableStateOf(eng.setting("updates_test_builds") == "on") }
+    var downloading by remember { mutableStateOf<Float?>(null) }
+    var lockOn by remember { mutableStateOf(Shield.enabled) }
+    var bioOn by remember { mutableStateOf(Shield.biometric) }
+    var hideRecents by remember { mutableStateOf(Shield.hideInRecents) }
+    var wipeOn by remember { mutableStateOf(Shield.wipeAfterFailures) }
+    var timeout by remember { mutableIntStateOf(Shield.timeoutMinutes) }
+    var pinDialog by remember { mutableStateOf(false) }
+    var confirmWipeToggle by remember { mutableStateOf(false) }
+    val act = ctx as? FragmentActivity
     fun openUrl(url: String) = runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         .onFailure { Toast.makeText(ctx, "No browser found", Toast.LENGTH_SHORT).show() }
+    fun downloadAndInstall(rel: UpdateChecker.Release) {
+        val url = rel.apkUrl ?: run { openUrl(rel.pageUrl); return }
+        if (Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
+            Toast.makeText(ctx, "Allow Anu Keystone to install updates, then tap Download again", Toast.LENGTH_LONG).show()
+            runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))) }
+            return
+        }
+        downloading = 0f; updateStatus = "Downloading v${rel.version}…"
+        scope.launch {
+            when (val r = UpdateInstaller.download(ctx, url) { p -> downloading = p }) {
+                is UpdateInstaller.Result.Ready -> { updateStatus = "Signature verified. Opening installer"; UpdateInstaller.install(ctx, r.file) }
+                is UpdateInstaller.Result.Rejected -> updateStatus = "Update refused: ${r.reason}"
+            }
+            downloading = null
+        }
+    }
 
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) runCatching {
@@ -133,13 +163,38 @@ fun SettingsScreen() {
                 }
             }
             item {
+                SectionCard("Security", Icons.Outlined.Shield) {
+                    ListItem(headlineContent = { Text("App lock") },
+                        supportingContent = { Text(if (lockOn) "PIN required to open the app" else "Protect the app with a PIN") },
+                        trailingContent = { Switch(lockOn, { if (it) pinDialog = true else { Shield.disable(); lockOn = false; bioOn = false } }) })
+                    if (lockOn) {
+                        TextButton(onClick = { pinDialog = true }) { Text("Change PIN") }
+                        if (act != null && biometricAvailable(act)) ListItem(headlineContent = { Text("Unlock with fingerprint or face") },
+                            trailingContent = { Switch(bioOn, { v -> if (v) promptBiometric(act, "Confirm it's you") { Shield.biometric = true; bioOn = true } else { Shield.biometric = false; bioOn = false } }) })
+                        Text("Lock after leaving the app", style = MaterialTheme.typography.bodyMedium)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(0 to "Immediately", 1 to "1 min", 5 to "5 min", 15 to "15 min").forEach { (m, label) ->
+                                FilterChip(selected = timeout == m, onClick = { Shield.timeoutMinutes = m; timeout = m }, label = { Text(label) })
+                            }
+                        }
+                        ListItem(headlineContent = { Text("Erase data after ${Shield.MAX_ATTEMPTS} wrong PINs") },
+                            supportingContent = { Text("For lost or stolen phones. Keep a backup") },
+                            trailingContent = { Switch(wipeOn, { v -> if (v) confirmWipeToggle = true else { Shield.wipeAfterFailures = false; wipeOn = false } }) })
+                    }
+                    ListItem(headlineContent = { Text("Hide in recent apps") },
+                        supportingContent = { Text("Blanks the app preview and blocks screenshots") },
+                        trailingContent = { Switch(hideRecents, { Shield.hideInRecents = it; hideRecents = it; (ctx as? MainActivity)?.applySecureFlag() }) })
+                    Text("Backups exclude your PIN and lock settings. Android cloud backup is off, so use Export to keep a copy.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
                 SectionCard("Updates", Icons.Outlined.SystemUpdate) {
                     Text("You're on v${BuildConfig.VERSION_NAME}. Checking contacts GitHub once and sends nothing about you.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(enabled = !checking, onClick = {
                             checking = true; updateStatus = null
                             scope.launch {
-                                when (val r = UpdateChecker.check()) {
+                                when (val r = UpdateChecker.check(includeTestBuilds = testBuilds)) {
                                     is UpdateChecker.Result.Available -> { foundUpdate = r.release; updateStatus = "v${r.release.version} is available" }
                                     is UpdateChecker.Result.UpToDate -> updateStatus = "You're up to date"
                                     is UpdateChecker.Result.Failed -> updateStatus = r.reason
@@ -150,6 +205,11 @@ fun SettingsScreen() {
                         if (checking) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     }
                     updateStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    downloading?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+                    ListItem(headlineContent = { Text("Include test builds") },
+                        supportingContent = { Text("Also offer pre-releases. They may be unstable") },
+                        trailingContent = { Switch(testBuilds, { testBuilds = it; eng.setSetting("updates_test_builds", if (it) "on" else null) }) })
+                    Text("Downloads are only installed if they're signed with the Anu Keystone key.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = { openUrl(UpdateChecker.RELEASES_PAGE) }) { Text("All releases") }
                 }
             }
@@ -164,7 +224,7 @@ fun SettingsScreen() {
     }
     foundUpdate?.let { rel ->
         AlertDialog(onDismissRequest = { foundUpdate = null },
-            title = { Text("Update available: v${rel.version}") },
+            title = { Text("Update available: v${rel.version}" + if (rel.prerelease) " (test build)" else "") },
             text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                     Text(rel.title, style = MaterialTheme.typography.titleSmall)
@@ -174,7 +234,7 @@ fun SettingsScreen() {
                     Text("Install the new APK over this one. Your data stays. Export a backup first to be safe.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            confirmButton = { TextButton(onClick = { openUrl(rel.apkUrl ?: rel.pageUrl); foundUpdate = null }) { Text(if (rel.apkUrl != null) "Download" else "Open release") } },
+            confirmButton = { TextButton(onClick = { downloadAndInstall(rel); foundUpdate = null }) { Text(if (rel.apkUrl != null) "Download & install" else "Open release") } },
             dismissButton = { TextButton(onClick = { foundUpdate = null }) { Text("Later") } })
     }
     pendingImport?.let { json ->
@@ -189,10 +249,13 @@ fun SettingsScreen() {
     }
     if (confirmReset) ConfirmDialog("Erase everything?", "All collections, items and settings will be deleted from this device. Export a backup first if unsure.", "Erase",
         onDismiss = { confirmReset = false }) {
-        eng.importJson(Backup(exportedAt = 0, collections = emptyList(), entries = emptyList(), settings = emptyMap()).let { KJson.encodeToString(Backup.serializer(), it) }, replace = true)
-        eng.installPresets(seed = true)
+        Ks.eraseAll()
         nav.navigate("onboarding") { popUpTo(nav.graph.id) { inclusive = true } }
     }
+    if (pinDialog) PinSetupDialog(onDismiss = { pinDialog = false }) { pin -> Shield.setPin(pin); lockOn = true; pinDialog = false
+        Toast.makeText(ctx, "App lock is on", Toast.LENGTH_SHORT).show() }
+    if (confirmWipeToggle) ConfirmDialog("Erase after ${Shield.MAX_ATTEMPTS} wrong PINs?", "After ${Shield.MAX_ATTEMPTS} wrong PINs in a row, every collection, item and setting on this device is deleted. This can't be undone, so export a backup regularly.", "Turn on",
+        onDismiss = { confirmWipeToggle = false }) { Shield.wipeAfterFailures = true; wipeOn = true }
     if (editName) TextInputDialog("Your name", eng.setting("profile_name") ?: "", onDismiss = { editName = false }) { eng.setSetting("profile_name", it) }
 }
 
@@ -438,4 +501,24 @@ fun AddViewDialog(c: CollectionDef, onDismiss: () -> Unit) {
             eng.upsertView(c.id, v); onDismiss()
         }) { Text("Add") }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
+
+@Composable
+private fun PinSetupDialog(onDismiss: () -> Unit, onDone: (String) -> Unit) {
+    var a by remember { mutableStateOf("") }
+    var b by remember { mutableStateOf("") }
+    val valid = a.length in 4..12 && a == b
+    val kb = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)
+    val mask = androidx.compose.ui.text.input.PasswordVisualTransformation()
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Set a PIN") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(a, { if (it.length <= 12 && it.all(Char::isDigit)) a = it }, label = { Text("PIN (4 to 12 digits)") }, singleLine = true, keyboardOptions = kb, visualTransformation = mask)
+                OutlinedTextField(b, { if (it.length <= 12 && it.all(Char::isDigit)) b = it }, label = { Text("Repeat PIN") }, singleLine = true, keyboardOptions = kb, visualTransformation = mask,
+                    isError = b.isNotEmpty() && a != b)
+                Text("If you forget it, the only way back in is reinstalling, which erases your data. Keep a backup.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(enabled = valid, onClick = { onDone(a) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }

@@ -333,4 +333,39 @@ class EngineTest {
         assertTrue(cv.contains("Developer — Acme  (Jan 2024 – Present)"))
         assertTrue(cv.contains("Technical: Kotlin"))
     }
+
+    @Test fun csvFormulaInjectionNeutralised() {
+        assertEquals("'=HYPERLINK(\"x\")", Engine.csvSafe("=HYPERLINK(\"x\")"))
+        assertEquals("'@SUM(A1)", Engine.csvSafe("@SUM(A1)"))
+        assertEquals("'+1+2", Engine.csvSafe("+1+2"))
+        assertEquals("-42.5", Engine.csvSafe("-42.5"), "plain negative numbers stay numbers")
+        assertEquals("hello", Engine.csvSafe("hello"))
+        val e = engine()
+        e.create("vocabulary", "=cmd|' /C calc'!A0")
+        assertTrue(e.exportCsv("vocabulary").lines()[1].startsWith("'=cmd"))
+    }
+
+    @Test fun securitySettingsNeverExportedOrImported() {
+        val e = engine()
+        e.setSetting("sec_secret", "x"); e.setSetting("theme", "dark")
+        val json = e.exportJson(pretty = false)
+        assertTrue(!json.contains("sec_secret"))
+        val evil = json.replace("\"theme\":\"dark\"", "\"theme\":\"dark\",\"sec_lock\":\"off\"")
+        val e2 = engine()
+        e2.importJson(evil, replace = true)
+        assertEquals(null, e2.setting("sec_lock"))
+        assertEquals("dark", e2.setting("theme"))
+    }
+
+    @Test fun hostileBackupsRejected() {
+        val e = engine()
+        val deep = "[".repeat(200) + "]".repeat(200)
+        assertTrue(runCatching { e.importJson(deep, replace = false) }.exceptionOrNull()!!.message!!.contains("nested"))
+        val t = e.create("tasks", "Probe")
+        val ok = e.exportJson(pretty = false)
+        assertTrue(ok.contains("\"${t.id}\""))
+        val badId = ok.replace("\"${t.id}\"", "\"../../etc\"")
+        assertTrue(runCatching { e.importJson(badId, replace = false) }.isFailure)
+        assertEquals(64, Engine.MAX_JSON_DEPTH)
+    }
 }

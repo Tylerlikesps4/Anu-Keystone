@@ -4,7 +4,8 @@
 package keystone.app
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
@@ -19,19 +20,30 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import keystone.app.ui.*
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureFlag()
         val startRoute = intent?.getStringExtra("route")
         setContent {
             tick()
             val e = Ks.engine
             KeystoneTheme(mode = e.setting("theme"), dynamic = e.setting("dynamic_color") == "on") {
-                AppRoot(startRoute)
+                val locked by Shield.locked
+                if (locked) LockScreen(onWipe = { Ks.eraseAll(); recreate() }) else AppRoot(startRoute)
             }
         }
     }
+
+    /** Shield: hide content from the recent-apps screen and block screenshots when the user turned it on. */
+    fun applySecureFlag() {
+        if (Shield.hideInRecents) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    override fun onStart() { super.onStart(); Shield.onForeground() }
+    override fun onStop() { super.onStop(); if (!isChangingConfigurations) Shield.onBackground() }
 }
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)

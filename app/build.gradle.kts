@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.tylerlikesps4.keystone"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.02"
+        versionCode = 4
+        versionName = "0.03"
     }
 
     signingConfigs {
@@ -69,6 +69,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("io.coil-kt:coil-compose:2.7.0")
 }
 

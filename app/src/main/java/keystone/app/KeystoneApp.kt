@@ -12,11 +12,20 @@ object Ks {
     lateinit var engine: Engine
     val version = mutableLongStateOf(0L)
     val e get() = engine
+
+    /** Erases every collection, item and setting, then reinstalls the presets and turns the lock off. */
+    fun eraseAll() {
+        engine.importJson(keystone.engine.KJson.encodeToString(keystone.engine.Backup.serializer(),
+            keystone.engine.Backup(exportedAt = 0, collections = emptyList(), entries = emptyList(), settings = emptyMap())), replace = true)
+        engine.installPresets(seed = true)
+        Shield.disable()
+    }
 }
 
 class KeystoneApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        Shield.init(this)
         val engine = Engine(SqliteStore(this))
         engine.installPresets(seed = true)
         engine.onChange = { Ks.version.longValue = engine.version }

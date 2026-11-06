@@ -638,7 +638,8 @@ class Engine(
     // ---------------------------------------------------------------- backup
 
     fun exportJson(pretty: Boolean = true): String {
-        val b = Backup(exportedAt = now(), collections = collections(), entries = entries.values.toList(), settings = settings.toMap())
+        val b = Backup(exportedAt = now(), collections = collections(), entries = entries.values.toList(),
+            settings = settings.filterKeys { !it.startsWith(PROTECTED_SETTING_PREFIX) })
         val j = if (pretty) Json(KJson) { prettyPrint = true } else KJson
         return j.encodeToString(b)
     }
@@ -647,9 +648,19 @@ class Engine(
 
     /** Imports a backup. [replace] wipes everything first; otherwise merges (newer `updated` wins). */
     fun importJson(json: String, replace: Boolean): ImportResult {
+        require(json.length <= MAX_IMPORT_CHARS) { "Backup is too large (over ${MAX_IMPORT_CHARS / 1_000_000} MB)" }
+        require(maxNesting(json) <= MAX_JSON_DEPTH) { "Backup is malformed (nested too deeply)" }
         val b = try { KJson.decodeFromString<Backup>(json) } catch (e: Exception) { throw IllegalArgumentException("Not a Keystone backup: ${e.message}") }
         require(b.format == "keystone-backup") { "Not a Keystone backup (format=${b.format})" }
         require(b.version <= 1) { "Backup is from a newer version of Keystone (v${b.version})" }
+        require(b.collections.size <= MAX_COLLECTIONS) { "Backup has too many collections (${b.collections.size})" }
+        require(b.entries.size <= MAX_ENTRIES) { "Backup has too many items (${b.entries.size})" }
+        val idOk = Regex("^[A-Za-z0-9_.:-]{1,80}$")
+        b.collections.forEach { require(idOk.matches(it.id)) { "Backup has an invalid collection id" } }
+        b.entries.forEach { require(idOk.matches(it.id)) { "Backup has an invalid item id" } }
+        val knownCols = b.collections.map { it.id }.toSet() + (if (replace) emptySet() else cols.keys)
+        b.entries.forEach { require(it.collection in knownCols) { "Backup has an item in an unknown collection" } }
+        val safeSettings = b.settings.filterKeys { k -> !k.startsWith(PROTECTED_SETTING_PREFIX) && k.length <= 80 }
         var nc = 0; var ne = 0
         store.transaction {
             if (replace) store.clearAll()
@@ -658,17 +669,20 @@ class Engine(
             val existing = if (replace) emptyMap() else entries.toMap()
             val toSave = b.entries.filter { e -> val cur = existing[e.id]; cur == null || e.updated >= cur.updated }
             store.saveEntries(toSave); ne = toSave.size
-            for ((k, v) in b.settings) store.setSetting(k, v)
+            for ((k, v) in safeSettings) store.setSetting(k, v)
         }
         reload()
-        return ImportResult(nc, ne, b.settings.size)
+        return ImportResult(nc, ne, safeSettings.size)
     }
 
     /** CSV of one collection with every visible field (RFC 4180 quoting). */
     fun exportCsv(collectionId: String): String {
         val c = cols[collectionId] ?: return ""
         val fs = fields(c)
-        fun q(s: String) = if (s.any { it == ',' || it == '"' || it == '\n' }) "\"" + s.replace("\"", "\"\"") + "\"" else s
+        fun q(raw: String): String {
+            val s = csvSafe(raw)
+            return if (s.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + s.replace("\"", "\"\"") + "\"" else s
+        }
         val sb = StringBuilder()
         sb.append((listOf(c.titleLabel) + fs.map { it.name }).joinToString(",") { q(it) }).append('\n')
         for (e in entries(collectionId)) sb.append((listOf(e.title) + fs.map { display(e, it) }).joinToString(",") { q(it) }).append('\n')
@@ -691,6 +705,25 @@ class Engine(
 
     companion object {
         const val NO_VALUE = "No value"
+        /** Settings with this prefix (security state) never leave the device and are never imported. */
+        const val PROTECTED_SETTING_PREFIX = "sec_"
+        const val MAX_IMPORT_CHARS = 50_000_000
+        const val MAX_JSON_DEPTH = 64
+        const val MAX_COLLECTIONS = 2_000
+        const val MAX_ENTRIES = 500_000
+        private val PLAIN_NUMBER = Regex("^-?\\d+(\\.\\d+)?$")
+        /** Neutralises spreadsheet formula injection: a cell starting with = + - @ tab or CR is prefixed with '. */
+        fun csvSafe(s: String): String =
+            if (s.isNotEmpty() && s[0] in "=+-@\t\r" && !PLAIN_NUMBER.matches(s)) "'" + s else s
+        /** Deepest {}/[] nesting outside strings, scanned without building a tree. */
+        fun maxNesting(json: String): Int {
+            var depth = 0; var max = 0; var inStr = false; var esc = false
+            for (ch in json) {
+                if (inStr) { if (esc) esc = false else if (ch == '\\') esc = true else if (ch == '"') inStr = false; continue }
+                when (ch) { '"' -> inStr = true; '{', '[' -> { depth++; if (depth > max) max = depth }; '}', ']' -> depth-- }
+            }
+            return max
+        }
         fun slug(s: String) = s.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').take(40)
         fun opts(vararg names: String) = names.mapIndexed { i, n -> SelectOption(n, i % 10) }
         fun round1(d: Double) = Math.round(d * 10) / 10.0

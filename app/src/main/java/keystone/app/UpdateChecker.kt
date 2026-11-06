@@ -19,8 +19,9 @@ object UpdateChecker {
     const val REPO = "Tylerlikesps4/Anu-Keystone"
     const val RELEASES_PAGE = "https://github.com/$REPO/releases"
     private const val API = "https://api.github.com/repos/$REPO/releases/latest"
+    private const val API_ALL = "https://api.github.com/repos/$REPO/releases?per_page=10"
 
-    data class Release(val version: String, val title: String, val notes: String, val pageUrl: String, val apkUrl: String?)
+    data class Release(val version: String, val title: String, val notes: String, val pageUrl: String, val apkUrl: String?, val prerelease: Boolean = false)
 
     sealed interface Result {
         data class UpToDate(val latest: String) : Result
@@ -28,9 +29,10 @@ object UpdateChecker {
         data class Failed(val reason: String) : Result
     }
 
-    suspend fun check(current: String = BuildConfig.VERSION_NAME): Result = withContext(Dispatchers.IO) {
+    /** [includeTestBuilds] also considers GitHub pre-releases (opt-in, off by default). */
+    suspend fun check(current: String = BuildConfig.VERSION_NAME, includeTestBuilds: Boolean = false): Result = withContext(Dispatchers.IO) {
         try {
-            val conn = (URL(API).openConnection() as HttpURLConnection).apply {
+            val conn = (URL(if (includeTestBuilds) API_ALL else API).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 10_000; readTimeout = 10_000
                 setRequestProperty("Accept", "application/vnd.github+json")
                 setRequestProperty("User-Agent", "AnuKeystone/$current")
@@ -43,7 +45,7 @@ object UpdateChecker {
                     else -> return@withContext Result.Failed("GitHub answered $code")
                 }
                 val body = conn.inputStream.use { it.readBytes().decodeToString() }
-                val rel = parse(body) ?: return@withContext Result.Failed("Couldn't read the release info")
+                val rel = (if (includeTestBuilds) newestOf(body) else parse(body)) ?: return@withContext Result.Failed("Couldn't read the release info")
                 if (isNewer(rel.version, current)) Result.Available(rel) else Result.UpToDate(rel.version)
             } finally { conn.disconnect() }
         } catch (e: java.io.IOException) {
@@ -52,6 +54,14 @@ object UpdateChecker {
             Result.Failed(e.message ?: "Something went wrong")
         }
     }
+
+    /** Picks the highest-versioned non-draft release from a releases list. */
+    fun newestOf(json: String): Release? = runCatching {
+        Json.parseToJsonElement(json).jsonArray.map { it.jsonObject }
+            .filter { it["draft"]?.jsonPrimitive?.content != "true" }
+            .mapNotNull { parse(it.toString()) }
+            .reduceOrNull { a, b -> if (isNewer(b.version, a.version)) b else a }
+    }.getOrNull()
 
     fun parse(json: String): Release? = runCatching {
         val o = Json.parseToJsonElement(json).jsonObject
@@ -68,6 +78,7 @@ object UpdateChecker {
             notes = o["body"]?.jsonPrimitive?.content.orEmpty().trim(),
             pageUrl = safe(page) ?: RELEASES_PAGE,
             apkUrl = safe(apk),
+            prerelease = o["prerelease"]?.jsonPrimitive?.content == "true",
         )
     }.getOrNull()
 
