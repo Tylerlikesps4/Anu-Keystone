@@ -125,7 +125,7 @@ fun SettingsScreen() {
             }
             item {
                 SectionCard("About", Icons.Outlined.Info) {
-                    Text("Keystone ${BuildConfig.VERSION_NAME} · free & open source (GPL-3.0-or-later)", style = MaterialTheme.typography.bodyMedium)
+                    Text("Anu Keystone v${BuildConfig.VERSION_NAME} · free & open source (GPL-3.0-or-later)", style = MaterialTheme.typography.bodyMedium)
                     TextButton(onClick = { nav.navigate("about") }) { Text("Licenses & credits") }
                     TextButton(onClick = { nav.navigate("guide") }) { Text("Setup guide") }
                 }
@@ -163,7 +163,7 @@ fun AboutScreen() {
     val text = remember { runCatching { ctx.assets.open("CREDITS.md").bufferedReader().readText() }.getOrDefault("See CREDITS.md in the source repository.") }
     Screen("Licenses & credits") { pad ->
         Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(16.dp)) {
-            Text("Keystone is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. Copyright (C) 2026 Tylerlikesps4.",
+            Text("Anu Keystone is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. Copyright (C) 2026 Tylerlikesps4.",
                 style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
             Text(text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)

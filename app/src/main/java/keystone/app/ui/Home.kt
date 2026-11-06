@@ -44,7 +44,7 @@ fun HomeScreen() {
 
     fun save(b: Dashboard) = eng.saveDashboards(boards.map { if (it.id == b.id) b else it })
 
-    Screen("Keystone", back = false, actions = {
+    Screen("Anu Keystone", back = false, actions = {
         IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Outlined.Check else Icons.Outlined.Edit, if (editing) "Done editing" else "Edit dashboard") }
         IconButton(onClick = { nav.navigate("settings") }) { Icon(Icons.Outlined.Settings, "Settings") }
     }) { pad ->

@@ -1,4 +1,4 @@
-# Keystone — an open-source life operating system for Android
+# Anu Keystone v0.01
 
 Keystone is a free, offline-first "second brain" for your whole life: tasks and projects (PARA),
 habits, journaling, sleep, goals and life setup, plus 9 life hubs covering health, food, career,

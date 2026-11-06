@@ -126,14 +126,14 @@ fun OnboardingScreen() {
             if (step > 0) TextButton(onClick = { step-- }) { Text("Back") }
             Spacer(Modifier.weight(1f))
             if (step > 0) TextButton(onClick = { if (step < steps - 1) step++ else finish() }) { Text("Skip") }
-            Button(onClick = { if (step < steps - 1) step++ else finish() }) { Text(if (step < steps - 1) "Next" else "Start using Keystone") }
+            Button(onClick = { if (step < steps - 1) step++ else finish() }) { Text(if (step < steps - 1) "Next" else "Start using Anu Keystone") }
         }
     }) { pad ->
         Column(Modifier.padding(pad).statusBarsPadding().padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             LinearProgressIndicator(progress = { (step + 1f) / steps }, Modifier.fillMaxWidth())
             when (step) {
                 0 -> {
-                    Text("Welcome to Keystone", style = MaterialTheme.typography.headlineMedium)
+                    Text("Welcome to Anu Keystone", style = MaterialTheme.typography.headlineMedium)
                     Text("One place for your tasks, goals, habits, health, money, learning, home, people and adventures. Everything stays on your phone.", style = MaterialTheme.typography.bodyLarge)
                     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("What should we call you?") }, singleLine = true)
                     Text("Next we'll do a 2-minute Life Setup: Wheel of Life, core values, vision and goals. You can skip any step.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

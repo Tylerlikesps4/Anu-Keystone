@@ -56,7 +56,7 @@ object Reminders {
             lines += "${u.field.name}: ${u.entry.title} ($col) " + if (u.days == 0L) "today" else "tomorrow"
         }
         if (habits.isNotEmpty()) lines += "Habits: " + habits.joinToString(", ") { it.title }
-        return "Your day in Keystone" to lines.joinToString("\n")
+        return "Your day in Anu Keystone" to lines.joinToString("\n")
     }
 
     fun post(ctx: Context) {
